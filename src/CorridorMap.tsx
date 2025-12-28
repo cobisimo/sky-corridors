@@ -51,7 +51,7 @@ export default function CorridorMap() {
     const map = new maplibregl.Map({
       container: "map",
       style: "https://demotiles.maplibre.org/style.json",
-      center: [20.46, 44.81],
+      center: [20.35, 43.89],
       zoom: 12,
     });
 
