@@ -7,7 +7,7 @@ import { v4 as uuid } from "uuid";
 import { point } from "@turf/helpers";
 import { featureCollection } from "@turf/helpers";
 
-import { Corridor } from "./types";
+import { type Corridor } from "./types";
 import { api } from "./api";
 import { corridorPolygon } from "./geometry";
 import { snapToCorridors } from "./snapping";
@@ -50,60 +50,15 @@ export default function CorridorMap() {
   useEffect(() => {
     const map = new maplibregl.Map({
       container: "map",
-      style: "https://demotiles.maplibre.org/style.json",
+      style: "https://tiles.openfreemap.org/styles/positron",
       center: [20.35, 43.89],
       zoom: 12,
     });
 
     const draw = new MapboxDraw({
       displayControlsDefault: false,
-      controls: {
-        line_string: true,
-        trash: true,
-      },
 
-      styles: [
-        // ===== LINESTRING (inactive) =====
-        {
-          id: "gl-draw-line-inactive",
-          type: "line",
-          filter: [
-            "all",
-            ["==", "$type", "LineString"],
-            ["!=", "mode", "static"],
-          ],
-          paint: {
-            "line-color": "#ff3333",
-            "line-width": 2,
-          },
-        },
-
-        // ===== LINESTRING (active) =====
-        {
-          id: "gl-draw-line-active",
-          type: "line",
-          filter: [
-            "all",
-            ["==", "$type", "LineString"],
-            ["==", "active", "true"],
-          ],
-          paint: {
-            "line-color": "#ff3333",
-            "line-width": 2,
-          },
-        },
-
-        // ===== VERTEX POINTS =====
-        {
-          id: "gl-draw-points",
-          type: "circle",
-          filter: ["all", ["==", "$type", "Point"]],
-          paint: {
-            "circle-radius": 5,
-            "circle-color": "#ff3333",
-          },
-        },
-      ],
+      styles: customStyles,
 
       modes: {
         ...MapboxDraw.modes,
@@ -149,7 +104,6 @@ export default function CorridorMap() {
 
       const data = await api.list();
       setCorridors(data);
-      // draw.changeMode("draw_line_string");
     });
 
     map.on("draw.create", e => {
@@ -310,3 +264,17 @@ export default function CorridorMap() {
     </>
   );
 }
+
+const customStyles: any[] = [
+  { 'id': 'draw-poly-fill', 'type': 'fill', 'filter': ['==', '$type', 'Polygon'], 'paint': { 'fill-color': '#ff4d4f', 'fill-opacity': 0.3 } },
+  { 'id': 'draw-poly-stroke', 'type': 'line', 'filter': ['==', '$type', 'Polygon'], 'paint': { 'line-color': '#ff4d4f', 'line-width': 2 } },
+  {
+    'id': 'draw-line', 'type': 'line', 'filter': ['==', '$type', 'LineString'],
+    'layout': { 'line-cap': 'round', 'line-join': 'round' },
+    'paint': {
+      'line-color': ['case', ['==', ['get', 'user_isInvalid'], true], '#ff4d4f', '#1890ff'],
+      'line-width': 10, 'line-opacity': 0.7
+    }
+  },
+  { 'id': 'draw-vertex', 'type': 'circle', 'filter': ['==', '$type', 'Point'], 'paint': { 'circle-radius': 4, 'circle-color': '#333' } }
+];
