@@ -1,22 +1,64 @@
-import { Corridor } from "./types";
+import type { Corridor, Obstacle } from "./types";
 
-let DB: Corridor[] = [];
+const BASE_URL = "http://localhost:3000";
+
+async function handleResponse(response: Response) {
+  if (!response.ok) throw new Error(response.statusText);
+  return response.json();
+}
 
 export const api = {
-  async list(): Promise<Corridor[]> {
-    return structuredClone(DB);
+  async listCorridors(): Promise<Corridor[]> {
+    const data = await fetch(`${BASE_URL}/locations?type=corridor`).then(handleResponse);
+    return data;
   },
 
-  async create(corridor: Corridor) {
-    DB.push(corridor);
+  async createCorridor(corridor: Corridor) {
+    return fetch(`${BASE_URL}/locations`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "corridor", coordinates: corridor.centerline.geometry.coordinates, width: corridor.width }),
+    }).then(handleResponse);
   },
 
-  async update(corridor: Corridor) {
-    DB = DB.map(c => (c.id === corridor.id ? corridor : c));
+  async updateCorridor(corridor: Corridor) {
+    return fetch(`${BASE_URL}/locations/${corridor.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(corridor),
+    }).then(handleResponse);
   },
 
-  async remove(id: string) {
-    DB = DB.filter(c => c.id !== id);
+  async removeCorridor(id: string) {
+    return fetch(`${BASE_URL}/locations/${id}`, {
+      method: "DELETE",
+    }).then(handleResponse);
+  },
+
+  async listObstacles(): Promise<Obstacle[]> {
+    const data = await fetch(`${BASE_URL}/locations?type=obstacle`).then(handleResponse);
+    return data;
+  },
+
+  async createObstacle(obstacle: Obstacle) {
+    return fetch(`${BASE_URL}/locations`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "obstacle", coordinates: obstacle.polygon.geometry.coordinates }),
+    }).then(handleResponse);
+  },
+
+  async updateObstacle(obstacle: Obstacle) {
+    return fetch(`${BASE_URL}/locations/${obstacle.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(obstacle),
+    }).then(handleResponse);
+  },
+
+  async removeObstacle(id: string) {
+    return fetch(`${BASE_URL}/locations/${id}`, {
+      method: "DELETE",
+    }).then(handleResponse);
   },
 };
-
