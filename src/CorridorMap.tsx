@@ -1,14 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
-import Map, { Source, Layer, Popup, useControl, NavigationControl } from 'react-map-gl/maplibre';
-import type { MapRef } from 'react-map-gl/maplibre';
+import Map, { Source, Layer, Popup, NavigationControl } from 'react-map-gl/maplibre';
 import MapboxDraw from "@mapbox/mapbox-gl-draw";
 import { v4 as uuid } from "uuid";
-import type { Feature, LineString, Polygon } from "geojson";
 
-import { type Corridor, type Obstacle } from "./types";
 import { api } from "./api";
-import { corridorPolygon } from "./geometry";
 import TwoPointLineMode from "./TwoPointLineMode";
 
 import "@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css";
@@ -18,8 +14,10 @@ import { Input } from "./components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "./components/ui/toggle-group";
 import { MousePointer2, OctagonMinus, Plane, RectangleEllipsis } from "lucide-react"
 import { Button } from "./components/ui/button";
-import { feature } from "@turf/helpers";
 import '@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css';
+import DrawControl from "./components/DrawControl";
+import Corridor from "./models/Corridor";
+import Obstacle from "./models/Obstacle";
 
 const API_KEY = '42QKswNbGPVp1Pd4nR7N';
 
@@ -38,41 +36,11 @@ const DrawMode = {
 
 type DrawMode = typeof DrawMode[keyof typeof DrawMode];
 
-function DrawControl({ drawRef, ...props }: any) {
-  const draw = useMemo(() => {
-    return new MapboxDraw(props);
-  }, []);
-
-  useControl(
-    () => draw,
-    ({ map }: { map: MapRef }) => {
-      map.on('draw.create', props.onCreate);
-      map.on('draw.update', props.onUpdate);
-      map.on('draw.delete', props.onDelete);
-      map.on('draw.selectionchange', props.onSelectionChange);
-      drawRef.current = draw;
-    },
-    ({ map }: { map: MapRef }) => {
-      // Cleanup events
-      map.off('draw.create', props.onCreate);
-      map.off('draw.update', props.onUpdate);
-      map.off('draw.delete', props.onDelete);
-      map.off('draw.selectionchange', props.onSelectionChange);
-      drawRef.current = null;
-    },
-    {
-      position: props.position || 'top-right'
-    }
-  );
-
-  return null;
-}
-
 export default function CorridorMap() {
-  const [corridors, setCorridors] = useState<any[]>([]);
+  const [corridors, setCorridors] = useState<Corridor[]>([]);
   const [obstacles, setObstacles] = useState<Obstacle[]>([]);
   const [drawMode, setDrawMode] = useState<DrawMode>(DrawMode.SELECT);
-  const [selected, setSelected] = useState<Corridor | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
   const [changed, setChanged] = useState(false);
   const [width, setWidth] = useState(80);
   const [hoverInfo, setHoverInfo] = useState<IHoveredObstacle | null>(null);
@@ -84,40 +52,22 @@ export default function CorridorMap() {
     drawModeRef.current = drawMode;
   }, [drawMode]);
 
+  const mapObjects = useMemo(() => {
+    return [...corridors, ...obstacles];
+  }, [corridors, obstacles]);
+
   useEffect(() => {
     let isMounted = true; // Prevents memory leaks
     const fetchData = async () => {
       try {
-        const c = await api.listCorridors();
-        const cc = c.map(corridor => {
-          const centerline: Feature<LineString> = feature({
-            type: "LineString",
-            coordinates: corridor.coordinates
-          }) as Feature<LineString>;
-          return {
-            id: corridor.id || uuid(),
-            centerline,
-            polygon: corridorPolygon(centerline, corridor.width ?? 80)
-          }
-        });
+        const cds = await api.listCorridors();
         if (isMounted) {
-          setCorridors(cc);
+          setCorridors(cds);
         }
 
-        const o = await api.listObstacles();
-        const oc = o.map(obstacle => {
-          const polygon: Feature<Polygon> = feature({
-            type: "Polygon",
-            coordinates: obstacle.coordinates
-          }) as Feature<Polygon>;
-          return {
-            id: obstacle.id || uuid(),
-            polygon
-          }
-        });
-        console.log("Obstacles:", oc);
+        const obs = await api.listObstacles();
         if (isMounted) {
-          setObstacles(oc);
+          setObstacles(obs);
         }
       } catch (err) {
         console.error("Failed to load corridors:", err);
@@ -128,28 +78,26 @@ export default function CorridorMap() {
     return () => { isMounted = false; };
   }, []);
 
-  useEffect(() => {
-    console.log('State updated! Corridors are now:', corridors);
-  }, [corridors]);
-
   function updateSelected() {
     if (!selected || !drawRef.current) return;
 
     const features = drawRef.current.getAll().features;
     if (!features.length) return;
 
-    const centerline = features[0];
-    const polygon = corridorPolygon(centerline, width);
+    const objectData = mapObjects.find(c => c.id === selected);
+    if (!objectData) return;
 
-    const updated: Corridor = {
-      ...selected,
-      centerline,
-      width,
-      polygon,
-    };
+    objectData.coordinates = features[0].geometry.coordinates;
 
-    api.updateCorridor(updated);
-    setCorridors(cs => cs.map(c => (c.id === updated.id ? updated : c)));
+    switch (objectData.type) {
+      case 'corridor':
+        api.updateCorridor(objectData as Corridor);
+        break;
+      case 'obstacle':
+        api.updateObstacle(objectData as Obstacle);
+        break;
+    }
+
     setSelected(null);
     drawRef.current.deleteAll();
   }
@@ -157,8 +105,8 @@ export default function CorridorMap() {
   function removeSelected() {
     if (!selected) return;
 
-    api.removeCorridor(selected.id);
-    setCorridors(cs => cs.filter(c => c.id !== selected.id));
+    api.removeCorridor(selected);
+    setCorridors(cs => cs.filter(c => c.id !== selected));
     setSelected(null);
     drawRef.current?.deleteAll();
   }
@@ -188,30 +136,20 @@ export default function CorridorMap() {
     const features = e.features;
 
     if (drawModeRef.current === DrawMode.DRAW_CORRIDOR) {
-      const centerline = features[0];
-      const polygon = corridorPolygon(centerline, width);
+      const line = features[0];
 
-      console.log('centerline', features[0]);
-
-      const corridor: Corridor = {
-        id: uuid(),
-        centerline,
-        width,
-        polygon,
-      };
+      const corridor = new Corridor(line.id, line.geometry.coordinates, width);
 
       api.createCorridor(corridor);
-      setCorridors(prev => [...prev, corridor]); // Functional update
+      setCorridors(prev => [...prev, corridor]);
       drawRef.current.deleteAll();
 
     } else if (drawModeRef.current === DrawMode.DRAW_OBSTACLE) {
-      const obstacle: Obstacle = {
-        id: uuid(),
-        polygon: features[0],
-      };
+      const polygon = features[0];
+      const obstacle = new Obstacle(polygon.id, polygon.geometry.coordinates);
 
       api.createObstacle(obstacle);
-      setObstacles(prev => [...prev, obstacle]); // Functional update
+      setObstacles(prev => [...prev, obstacle]);
       drawRef.current.deleteAll();
     }
 
@@ -219,15 +157,8 @@ export default function CorridorMap() {
   };
 
   const onSelectionChange = (e: any) => {
-    setSelected(e.features[0] ? e.features[0] : null);
-    // const selected = e.features[0];
-    // if (selected) {
-    //   const corridorData = corridors.find(c => c.id === selected.id);
-    //   if (corridorData) {
-    //     // Set some state to show info in a Card/Sidebar
-    //     setSelected(corridorData);
-    //   }
-    // }
+    const selected = e.features[0];
+    setSelected(selected?.id ? selected.id : null);
   };
 
   // Make drawMode in sync
@@ -254,7 +185,7 @@ export default function CorridorMap() {
       const existing = drawRef.current.get(corridor.id);
       if (!existing) {
         drawRef.current.add({
-          ...corridor.centerline,
+          ...corridor.getDrawObject(),
           id: corridor.id,
         });
       }
@@ -268,7 +199,7 @@ export default function CorridorMap() {
       const existing = drawRef.current.get(obstacle.id);
       if (!existing) {
         drawRef.current.add({
-          ...obstacle.polygon,
+          ...obstacle.getDrawObject(),
           id: obstacle.id,
         });
       }
@@ -323,7 +254,7 @@ export default function CorridorMap() {
             type: "FeatureCollection",
             // Extract just the polygon GeoJSON features from your state
             features: corridors.map(c => ({
-              ...c.polygon,
+              ...c.getDrawPolygon(),
               id: c.id // Ensure the ID is attached to the feature for hover/selection
             })),
           }}
@@ -352,7 +283,7 @@ export default function CorridorMap() {
           data={{
             type: "FeatureCollection",
             features: obstacles.map(o => ({
-              ...o.polygon,
+              ...o.getDrawPolygon(),
               id: o.id
             })),
           }}>
@@ -366,6 +297,16 @@ export default function CorridorMap() {
             }}
           />
         </Source>
+        {/*<Source id="point-data" type="geojson" data={geoJsonData}>
+          <Layer
+            id="points"
+            type="circle"
+            paint={{
+              'circle-color': '#007cbf',
+              'circle-radius': 6,
+            }}
+          />
+        </Source>*/}
         {hoverInfo && (
           <Popup
             longitude={hoverInfo.lngLat.lng}

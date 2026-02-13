@@ -1,4 +1,5 @@
-import type { Corridor, Obstacle } from "./types";
+import Corridor from "./models/Corridor";
+import Obstacle from "./models/Obstacle";
 
 const BASE_URL = "http://localhost:3000";
 
@@ -10,14 +11,14 @@ async function handleResponse(response: Response) {
 export const api = {
   async listCorridors(): Promise<Corridor[]> {
     const data = await fetch(`${BASE_URL}/locations?type=corridor`).then(handleResponse);
-    return data;
+    return data.map(c => new Corridor(c.id, c.coordinates, c.width));
   },
 
   async createCorridor(corridor: Corridor) {
     return fetch(`${BASE_URL}/locations`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type: "corridor", coordinates: corridor.centerline.geometry.coordinates, width: corridor.width }),
+      body: JSON.stringify(corridor),
     }).then(handleResponse);
   },
 
@@ -37,7 +38,7 @@ export const api = {
 
   async listObstacles(): Promise<Obstacle[]> {
     const data = await fetch(`${BASE_URL}/locations?type=obstacle`).then(handleResponse);
-    return data;
+    return data.map(o => new Obstacle(o.id, o.coordinates));
   },
 
   async createObstacle(obstacle: Obstacle) {
