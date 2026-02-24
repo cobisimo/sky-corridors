@@ -39,6 +39,7 @@ export default function CorridorMap() {
   const [corridors, setCorridors] = useState<Corridor[]>([]);
   const [obstacles, setObstacles] = useState<Obstacle[]>([]);
   const [landingPoints, setLandingPoints] = useState<Landing[]>([]);
+  const [draw, setDraw] = useState<MapboxDraw | null>(null);
   const [drawMode, setDrawMode] = useState<DrawMode>(DrawMode.SELECT);
   const [selected, setSelected] = useState<string | null>(null);
   const [changed, setChanged] = useState(false);
@@ -213,11 +214,11 @@ export default function CorridorMap() {
         });
       }
     });
-  }, [corridors]);
+  }, [draw, corridors]);
 
   // Add obstacles to draw layer
   useEffect(() => {
-    if (!drawRef || !drawRef.current || !obstacles.length) return;
+    if (!draw || !obstacles.length) return;
     obstacles.forEach((obstacle) => {
       const existing = drawRef.current.get(obstacle.id);
       if (!existing) {
@@ -227,11 +228,11 @@ export default function CorridorMap() {
         });
       }
     });
-  }, [obstacles]);
+  }, [draw, obstacles]);
 
   // Add landing points to draw layer
   useEffect(() => {
-    if (!drawRef || !drawRef.current || !landingPoints.length) return;
+    if (!draw || !landingPoints.length) return;
     landingPoints.forEach((landingPoint) => {
       const existing = drawRef.current.get(landingPoint.id);
       if (!existing) {
@@ -241,7 +242,7 @@ export default function CorridorMap() {
         });
       }
     });
-  }, [landingPoints]);
+  }, [draw, landingPoints]);
 
   return (
     <>
@@ -330,7 +331,7 @@ export default function CorridorMap() {
             filter={["==", "$type", "Polygon"]}
             paint={{
               "fill-color": "#ff4d4f",
-              "fill-opacity": 0.3,
+              "fill-opacity": 0.2,
             }}
           />
         </Source>
@@ -382,6 +383,9 @@ export default function CorridorMap() {
           onCreate={onCreate}
           onSelectionChange={onSelectionChange}
           onUpdate={() => setChanged(true)}
+          onDrawCreated={(draw) => {
+            setDraw(draw);
+          }}
         />
         <NavigationControl position="top-right" showCompass={false} />
       </Map>

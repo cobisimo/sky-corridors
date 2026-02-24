@@ -5,7 +5,9 @@ import MapboxDraw from "@mapbox/mapbox-gl-draw";
 
 function DrawControl({ drawRef, ...props }: any) {
   const draw = useMemo(() => {
-    return new MapboxDraw(props);
+    const draw = new MapboxDraw(props);
+    props.onDrawCreated(draw);
+    return draw;
   }, []);
 
   useControl(
