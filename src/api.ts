@@ -1,4 +1,5 @@
 import Corridor from "./models/Corridor";
+import Landing from "./models/Landing";
 import Obstacle from "./models/Obstacle";
 
 const BASE_URL = "http://localhost:3000";
@@ -57,7 +58,28 @@ export const api = {
     }).then(handleResponse);
   },
 
-  async removeObstacle(id: string) {
+  async listLandings(): Promise<Landing[]> {
+    const data = await fetch(`${BASE_URL}/locations?type=landing_point`).then(handleResponse);
+    return data.map(o => new Landing(o.id, o.coordinates));
+  },
+
+  async createLanding(landing: Landing) {
+    return fetch(`${BASE_URL}/locations`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(landing),
+    }).then(handleResponse);
+  },
+
+  async updateLanding(landing: Landing) {
+    return fetch(`${BASE_URL}/locations/${landing.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(landing),
+    }).then(handleResponse);
+  },
+
+  async removeLanding(id: string) {
     return fetch(`${BASE_URL}/locations/${id}`, {
       method: "DELETE",
     }).then(handleResponse);

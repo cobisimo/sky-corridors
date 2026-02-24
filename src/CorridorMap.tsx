@@ -1,23 +1,21 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import maplibregl from "maplibre-gl";
+import "@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css";
+import '@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css';
+import "maplibre-gl/dist/maplibre-gl.css";
+import Corridor from "./models/Corridor";
+import DrawControl from "./components/DrawControl";
 import Map, { Source, Layer, Popup, NavigationControl } from 'react-map-gl/maplibre';
 import MapboxDraw from "@mapbox/mapbox-gl-draw";
-import { v4 as uuid } from "uuid";
-
-import { api } from "./api";
+import Obstacle from "./models/Obstacle";
 import TwoPointLineMode from "./TwoPointLineMode";
-
-import "@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css";
-import "maplibre-gl/dist/maplibre-gl.css";
+import maplibregl from "maplibre-gl";
+import { Button } from "./components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./components/ui/card";
 import { Input } from "./components/ui/input";
+import { MousePointer2, OctagonMinus, Plane, RectangleEllipsis, Target } from "lucide-react"
 import { ToggleGroup, ToggleGroupItem } from "./components/ui/toggle-group";
-import { MousePointer2, OctagonMinus, Plane, RectangleEllipsis } from "lucide-react"
-import { Button } from "./components/ui/button";
-import '@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css';
-import DrawControl from "./components/DrawControl";
-import Corridor from "./models/Corridor";
-import Obstacle from "./models/Obstacle";
+import { api } from "./api";
+import { useEffect, useMemo, useRef, useState } from "react";
+import Landing from "./models/Landing";
 
 const API_KEY = '42QKswNbGPVp1Pd4nR7N';
 
@@ -32,6 +30,7 @@ const DrawMode = {
   SELECT: "select",
   DRAW_CORRIDOR: "drawCorridor",
   DRAW_OBSTACLE: "drawObstacle",
+  DRAW_LANDING: "drawLanding"
 } as const;
 
 type DrawMode = typeof DrawMode[keyof typeof DrawMode];
@@ -39,6 +38,7 @@ type DrawMode = typeof DrawMode[keyof typeof DrawMode];
 export default function CorridorMap() {
   const [corridors, setCorridors] = useState<Corridor[]>([]);
   const [obstacles, setObstacles] = useState<Obstacle[]>([]);
+  const [landingPoints, setLandingPoints] = useState<Landing[]>([]);
   const [drawMode, setDrawMode] = useState<DrawMode>(DrawMode.SELECT);
   const [selected, setSelected] = useState<string | null>(null);
   const [changed, setChanged] = useState(false);
@@ -53,8 +53,8 @@ export default function CorridorMap() {
   }, [drawMode]);
 
   const mapObjects = useMemo(() => {
-    return [...corridors, ...obstacles];
-  }, [corridors, obstacles]);
+    return [...corridors, ...obstacles, ...landingPoints];
+  }, [corridors, obstacles, landingPoints]);
 
   useEffect(() => {
     let isMounted = true; // Prevents memory leaks
@@ -68,6 +68,11 @@ export default function CorridorMap() {
         const obs = await api.listObstacles();
         if (isMounted) {
           setObstacles(obs);
+        }
+
+        const lds = await api.listLandings();
+        if (isMounted) {
+          setLandingPoints(lds);
         }
       } catch (err) {
         console.error("Failed to load corridors:", err);
@@ -95,6 +100,9 @@ export default function CorridorMap() {
         break;
       case 'obstacle':
         api.updateObstacle(objectData as Obstacle);
+        break;
+      case 'landing_point':
+        api.updateLanding(objectData as Landing);
         break;
     }
 
@@ -134,23 +142,35 @@ export default function CorridorMap() {
     if (!drawRef.current) return;
 
     const features = e.features;
+    const feature = features[0];
 
-    if (drawModeRef.current === DrawMode.DRAW_CORRIDOR) {
-      const line = features[0];
+    switch (drawModeRef.current) {
+      case DrawMode.DRAW_CORRIDOR:
+        const corridor = new Corridor(feature.id, feature.geometry.coordinates, width);
 
-      const corridor = new Corridor(line.id, line.geometry.coordinates, width);
+        api.createCorridor(corridor);
+        setCorridors(prev => [...prev, corridor]);
+        drawRef.current.deleteAll();
+        break;
 
-      api.createCorridor(corridor);
-      setCorridors(prev => [...prev, corridor]);
-      drawRef.current.deleteAll();
+      case DrawMode.DRAW_OBSTACLE:
+        const obstacle = new Obstacle(feature.id, feature.geometry.coordinates);
 
-    } else if (drawModeRef.current === DrawMode.DRAW_OBSTACLE) {
-      const polygon = features[0];
-      const obstacle = new Obstacle(polygon.id, polygon.geometry.coordinates);
+        api.createObstacle(obstacle);
+        setObstacles(prev => [...prev, obstacle]);
+        drawRef.current.deleteAll();
 
-      api.createObstacle(obstacle);
-      setObstacles(prev => [...prev, obstacle]);
-      drawRef.current.deleteAll();
+        break;
+
+      case DrawMode.DRAW_LANDING:
+        console.log(feature);
+        const landing = new Landing(feature.id, feature.geometry.coordinates);
+
+        api.createLanding(landing);
+        setLandingPoints(prev => [...prev, landing]);
+        drawRef.current.deleteAll();
+
+        break;
     }
 
     setDrawMode(DrawMode.SELECT);
@@ -171,6 +191,9 @@ export default function CorridorMap() {
         break;
       case DrawMode.DRAW_OBSTACLE:
         drawRef.current.changeMode("draw_polygon");
+        break;
+      case DrawMode.DRAW_LANDING:
+        drawRef.current.changeMode("draw_point");
         break;
       default:
         drawRef.current.changeMode("simple_select");
@@ -205,6 +228,20 @@ export default function CorridorMap() {
       }
     });
   }, [obstacles]);
+
+  // Add landing points to draw layer
+  useEffect(() => {
+    if (!drawRef || !drawRef.current || !landingPoints.length) return;
+    landingPoints.forEach((landingPoint) => {
+      const existing = drawRef.current.get(landingPoint.id);
+      if (!existing) {
+        drawRef.current.add({
+          ...landingPoint.getDrawObject(),
+          id: landingPoint.id,
+        });
+      }
+    });
+  }, [landingPoints]);
 
   return (
     <>
@@ -297,16 +334,27 @@ export default function CorridorMap() {
             }}
           />
         </Source>
-        {/*<Source id="point-data" type="geojson" data={geoJsonData}>
+        <Source
+          type="geojson"
+          data={{
+            type: "FeatureCollection",
+            features: landingPoints.map(o => ({
+              ...o.getDrawPolygon(),
+              id: o.id
+            })),
+          }}>
           <Layer
             id="points"
             type="circle"
             paint={{
-              'circle-color': '#007cbf',
-              'circle-radius': 6,
+              'circle-color': '#7c00bf',
+              'circle-opacity': 0.3,
+              'circle-radius': 15,
+              'circle-stroke-width': 2,
+              'circle-stroke-color': '#7c00bf'
             }}
           />
-        </Source>*/}
+        </Source>
         {hoverInfo && (
           <Popup
             longitude={hoverInfo.lngLat.lng}
@@ -348,15 +396,19 @@ export default function CorridorMap() {
           <ToggleGroup type="single" value={drawMode} variant="outline" onValueChange={(value: DrawMode) => setDrawMode(value)}>
             <ToggleGroupItem value={DrawMode.SELECT}>
               <MousePointer2 />
-              Изабери
+              {drawMode == DrawMode.SELECT ? 'Изабери' : ''}
             </ToggleGroupItem>
             <ToggleGroupItem value={DrawMode.DRAW_CORRIDOR}>
               <RectangleEllipsis />
-              Коридор
+              {drawMode == DrawMode.DRAW_CORRIDOR ? 'Коридор' : ''}
             </ToggleGroupItem>
             <ToggleGroupItem value={DrawMode.DRAW_OBSTACLE}>
               <OctagonMinus />
-              Препрека
+              {drawMode == DrawMode.DRAW_OBSTACLE ? 'Препрека' : ''}
+            </ToggleGroupItem>
+            <ToggleGroupItem value={DrawMode.DRAW_LANDING}>
+              <Target />
+              {drawMode == DrawMode.DRAW_LANDING ? 'Полетно/слетна станица' : ''}
             </ToggleGroupItem>
           </ToggleGroup>
           {drawMode == DrawMode.DRAW_CORRIDOR && <Input

@@ -1,6 +1,6 @@
 import type { Position } from "geojson";
 
-type ObjectType = 'corridor' | 'obstacle' | 'landing';
+type ObjectType = 'corridor' | 'obstacle' | 'landing_point';
 
 abstract class MapObject {
   id: string;

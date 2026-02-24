@@ -4,7 +4,7 @@ import { feature } from "@turf/helpers";
 
 class Landing extends MapObject {
   constructor(id: string, coordinates: Position) {
-    super(id, 'landing');
+    super(id, 'landing_point');
     this.coordinates = coordinates;
   }
 
